@@ -1,6 +1,9 @@
 from django.db import models
 from django.conf import settings
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+
 class Property(models.Model):
 
     latitude = models.DecimalField(
@@ -74,3 +77,87 @@ class Property(models.Model):
 
     def __str__(self):
         return self.title
+
+class Review(models.Model):
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="reviews"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reviews"
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    comment = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property", "user"],
+                name="unique_review_per_user"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.property} ({self.rating})"  
+
+class Booking(models.Model):
+    STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    ]
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="bookings",
+    )
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="bookings",
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default="PENDING",
+    )
+
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.student} → {self.property} ({self.status})"  
+    
+    def approve(self):
+        if self.status != "PENDING":
+            return
+
+        property_obj = self.property
+
+        if property_obj.available_rooms > 0:
+            property_obj.available_rooms -= 1
+
+            if property_obj.available_rooms == 0:
+                property_obj.is_available = False
+
+            property_obj.save()
+
+        self.status = "APPROVED"
+        self.save()
+
+    def reject(self):
+        self.status = "REJECTED"
+        self.save()    
