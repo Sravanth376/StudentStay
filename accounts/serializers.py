@@ -4,6 +4,18 @@ from .models import User
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "email",
+            "password",
+            "first_name",
+            "last_name",
+            "phone",
+            "role",
+        ]
+
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
@@ -11,21 +23,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             )
         return value
 
-    class Meta:
-        model = User
-        fields = (
-            "username",
-            "email",
-            "phone",
-            "role",
-            "password",
-        )
-
     def create(self, validated_data):
         password = validated_data.pop("password")
 
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
+        user = User.objects.create_user(
+            password=password,
+            **validated_data
+        )
 
         return user
