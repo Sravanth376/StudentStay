@@ -2,12 +2,13 @@ from rest_framework import serializers
 from .models import Property, Review, Booking
 from .utils import calculate_distance
 
-
 SRKR_LAT = 16.544900
 SRKR_LON = 81.521200
 
 
 class PropertySerializer(serializers.ModelSerializer):
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
+
     distance = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     total_reviews = serializers.SerializerMethodField()
@@ -15,8 +16,7 @@ class PropertySerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = "__all__"
-        # Because we're using "__all__", the model fields are included automatically.
-        # SerializerMethodField is added automatically as well.
+        read_only_fields = ["owner"]
 
     def get_distance(self, obj):
         if obj.latitude is None or obj.longitude is None:
@@ -28,6 +28,7 @@ class PropertySerializer(serializers.ModelSerializer):
             float(obj.latitude),
             float(obj.longitude),
         )
+
     def get_average_rating(self, obj):
         reviews = obj.reviews.all()
 
@@ -37,10 +38,8 @@ class PropertySerializer(serializers.ModelSerializer):
         total = sum(review.rating for review in reviews)
         return round(total / reviews.count(), 1)
 
-
     def get_total_reviews(self, obj):
         return obj.reviews.count()
-
 class ReviewSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True)
 

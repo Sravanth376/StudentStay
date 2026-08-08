@@ -15,11 +15,18 @@ from .serializers import ReviewSerializer
 from rest_framework.exceptions import ValidationError
 from .models import Booking
 from .serializers import BookingSerializer
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
+
 class PropertyListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = PropertySerializer
 
     SRKR_LAT = 16.544900
     SRKR_LON = 81.521200
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsAuthenticated()]
+        return [IsAuthenticatedOrReadOnly()]
 
     def get_queryset(self):
         queryset = Property.objects.all()
@@ -55,9 +62,12 @@ class PropertyListCreateAPIView(generics.ListCreateAPIView):
         ]
 
         if ordering in allowed_ordering:
-            queryset = queryset.order_by(ordering)    
+            queryset = queryset.order_by(ordering)
 
         return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
 
 class PropertyDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
