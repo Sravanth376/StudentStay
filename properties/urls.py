@@ -13,6 +13,7 @@ from .views import (
     ApproveBookingAPIView,
     RejectBookingAPIView,
     OwnerDashboardAPIView,
+    BookingContactAPIView,
 )
 
 urlpatterns = [
@@ -83,5 +84,10 @@ urlpatterns = [
         "reviews/<int:pk>/",
         ReviewDetailAPIView.as_view(),
         name="review-delete",
+    ),
+    path(
+        "bookings/<int:pk>/contact/",
+        BookingContactAPIView.as_view(),
+        name="booking-contact",
     ),
 ]

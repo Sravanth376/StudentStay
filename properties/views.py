@@ -4,7 +4,7 @@ from .serializers import PropertySerializer
 from .permissions import IsOwnerOrReadOnly
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from .utils import calculate_distance
-from django.db.models import Q
+from django.db.models import Q, Avg
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -146,7 +146,47 @@ class MyPropertiesAPIView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Property.objects.filter(owner=self.request.user) 
+        queryset = Property.objects.filter(owner=self.request.user)
+
+        search = self.request.query_params.get("search")
+        property_type = self.request.query_params.get("property_type")
+        availability = self.request.query_params.get("availability")
+        gender = self.request.query_params.get("gender")
+        ordering = self.request.query_params.get("ordering")
+
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(city__icontains=search) |
+                Q(address__icontains=search)
+            )
+
+        if property_type and property_type != "ALL":
+            queryset = queryset.filter(property_type=property_type)
+
+        if availability and availability != "ALL":
+            is_available = availability == "AVAILABLE"
+            if is_available:
+                queryset = queryset.filter(is_available=True, available_rooms__gt=0)
+            else:
+                queryset = queryset.filter(Q(is_available=False) | Q(available_rooms=0))
+
+        if gender and gender != "ALL":
+            queryset = queryset.filter(gender=gender)
+
+        allowed_ordering = {
+            "NEWEST": "-created_at",
+            "OLDEST": "created_at",
+            "RENT_LOW_HIGH": "rent",
+            "RENT_HIGH_LOW": "-rent",
+        }
+
+        if ordering in allowed_ordering:
+            queryset = queryset.order_by(allowed_ordering[ordering])
+        else:
+            queryset = queryset.order_by("-created_at")
+
+        return queryset 
 
 class BookingCreateAPIView(generics.CreateAPIView):
     serializer_class = BookingSerializer
@@ -196,23 +236,19 @@ class OwnerDashboardAPIView(APIView):
 
     def get(self, request):
         properties = Property.objects.filter(owner=request.user)
-
-        bookings = Booking.objects.filter(
-            property__owner=request.user
-        )
+        bookings = Booking.objects.filter(property__owner=request.user)
 
         data = {
             "total_properties": properties.count(),
             "total_bookings": bookings.count(),
-            "pending_bookings": bookings.filter(
-                status="PENDING"
-            ).count(),
-            "approved_bookings": bookings.filter(
-                status="APPROVED"
-            ).count(),
-            "rejected_bookings": bookings.filter(
-                status="REJECTED"
-            ).count(),
+            "pending_bookings": bookings.filter(status="PENDING").count(),
+            "approved_bookings": bookings.filter(status="APPROVED").count(),
+            "rejected_bookings": bookings.filter(status="REJECTED").count(),
+            
+            # Rich stats for My Properties Summary
+            "available_properties": properties.filter(is_available=True, available_rooms__gt=0).count(),
+            "occupied_properties": properties.filter(Q(is_available=False) | Q(available_rooms=0)).count(),
+            "average_rent": round(properties.aggregate(Avg("rent"))["rent__avg"] or 0),
         }
 
         return Response(data)
@@ -263,4 +299,32 @@ class RejectBookingAPIView(generics.GenericAPIView):
         return Response(
             {"message": "Booking rejected successfully."},
             status=status.HTTP_200_OK,
-        )                     
+        )
+
+
+class BookingContactAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk)
+
+        # Confirm booking belongs to request student
+        if booking.student != request.user:
+            return Response(
+                {"error": "You do not have permission to view contact info for this booking."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Confirm booking is approved
+        if booking.status != "APPROVED":
+            return Response(
+                {"error": "Contact details are only available for approved bookings."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        owner = booking.property.owner
+        return Response({
+            "owner_name": f"{owner.first_name} {owner.last_name}".strip() or owner.email.split("@")[0],
+            "owner_email": owner.email,
+            "owner_phone": getattr(owner, "phone", "")
+        })                     

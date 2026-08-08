@@ -19,6 +19,9 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         email = attrs.get("email")
         password = attrs.get("password")
 
+        if email:
+            email = email.strip().lower()
+
         user = authenticate(
             request=self.context.get("request"),
             username=email,
